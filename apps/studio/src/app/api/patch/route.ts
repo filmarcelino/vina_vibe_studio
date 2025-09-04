@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { replaceTextInComponent } from '@packages/diff-patcher';
+import { replaceTextInComponent } from '@vina/diff-patcher';
 import path from 'path';
 
 interface PatchRequest {

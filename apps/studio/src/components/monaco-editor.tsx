@@ -5,16 +5,18 @@ import { useTheme } from "next-themes";
 
 interface MonacoProps {
   value: string;
-  onChange: (value: string | undefined) => void;
+  onChange?: (value: string | undefined) => void;
   language?: string;
   height?: string;
+  options?: any;
 }
 
 export function Monaco({ 
   value, 
   onChange, 
   language = "typescript", 
-  height = "100%" 
+  height = "100%",
+  options = {} 
 }: MonacoProps) {
   const { theme } = useTheme();
 
@@ -41,6 +43,7 @@ export function Monaco({
         folding: true,
         lineDecorationsWidth: 10,
         lineNumbersMinChars: 3,
+        ...options
       }}
     />
   );

@@ -10,7 +10,12 @@ interface PreviewStatus {
   url?: string;
 }
 
-export function PreviewPanel() {
+interface PreviewPanelProps {
+  width?: string;
+  showOverlay?: boolean;
+}
+
+export function PreviewPanel({ width = "100%", showOverlay = false }: PreviewPanelProps) {
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>({
     status: "loading",
     message: "Checking runner status...",
@@ -97,15 +102,25 @@ export function PreviewPanel() {
       </div>
 
       {/* Preview Content */}
-      <div className="flex-1 bg-gray-50">
+      <div className="flex-1 bg-gray-50 flex items-center justify-center">
         {previewStatus.status === "online" && previewStatus.url ? (
-          <iframe
-            key={refreshKey}
-            src={previewStatus.url}
-            className="w-full h-full border-0"
-            title="Preview"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          />
+          <div 
+            className="relative bg-white shadow-lg"
+            style={{ width, maxWidth: '100%', height: '100%' }}
+          >
+            <iframe
+              key={refreshKey}
+              src={previewStatus.url}
+              className="w-full h-full border-0 rounded"
+              title="Preview"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            />
+            {showOverlay && (
+              <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute inset-0 border-2 border-blue-500 opacity-50 rounded"></div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="h-full flex items-center justify-center">
             <div className="text-center p-8">

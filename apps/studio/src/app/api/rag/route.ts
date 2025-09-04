@@ -1,117 +1,157 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-interface RagRequest {
-  query?: string;
-  q?: string;
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+function toStrings(v: any): string[] {
+  if (!v) return [];
+  if (Array.isArray(v)) {
+    return v.map((it) => {
+      if (typeof it === 'string') return it;
+      if (typeof it?.text === 'string') return it.text;
+      if (typeof it?.content === 'string') return it.content;
+      if (typeof it?.answer === 'string') return it.answer;
+      return JSON.stringify(it);
+    });
+  }
+  if (typeof v === 'object') {
+    if (Array.isArray(v.answers)) return v.answers.map(String);
+    if (Array.isArray(v.results)) return toStrings(v.results);
+    if (typeof v.result === 'string') return [v.result];
+    if (typeof v.output === 'string') return [v.output];
+    if (typeof v.message === 'string') return [v.message];
+  }
+  return [JSON.stringify(v)];
 }
 
-interface RagResponse {
-  ok: boolean;
-  answers: string[];
-  error?: string;
-}
-
-export async function POST(request: NextRequest) {
+async function tryPostJSON(url: string, body: any, timeout = 10000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
   try {
-    const body: RagRequest = await request.json();
-    const query = body.query || body.q;
-    
-    if (!query) {
-      return NextResponse.json(
-        { ok: false, answers: [], error: 'Query parameter is required' },
-        { status: 400 }
-      );
-    }
-
-    const ragServerUrl = process.env.RAG_SERVER_URL;
-    if (!ragServerUrl) {
-      return NextResponse.json(
-        { ok: false, answers: [], error: 'RAG server not configured' },
-        { status: 500 }
-      );
-    }
-
-    // Try first endpoint: /search?q=query
-    let response;
-    try {
-      const searchUrl = `${ragServerUrl}/search?q=${encodeURIComponent(query)}`;
-      response = await fetch(searchUrl, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        // Add timeout
-        signal: AbortSignal.timeout(10000),
-      });
-      
-      if (response.status === 404) {
-        // Try alternative endpoint: /search?query=query
-        const altSearchUrl = `${ragServerUrl}/search?query=${encodeURIComponent(query)}`;
-        response = await fetch(altSearchUrl, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          signal: AbortSignal.timeout(10000),
-        });
-      }
-    } catch (error) {
-      console.error('RAG server connection error:', error);
-      return NextResponse.json(
-        { ok: false, answers: [], error: 'Failed to connect to RAG server' },
-        { status: 503 }
-      );
-    }
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { ok: false, answers: [], error: `RAG server error: ${response.status}` },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-    
-    // Normalize response - handle different response formats
-    let answers: string[] = [];
-    
-    if (Array.isArray(data)) {
-      // Direct array of strings
-      answers = data.slice(0, 3).map(item => 
-        typeof item === 'string' ? item : JSON.stringify(item)
-      );
-    } else if (data.results && Array.isArray(data.results)) {
-      // { results: [...] }
-      answers = data.results.slice(0, 3).map((item: any) => 
-        typeof item === 'string' ? item : (item.text || item.content || JSON.stringify(item))
-      );
-    } else if (data.answers && Array.isArray(data.answers)) {
-      // { answers: [...] }
-      answers = data.answers.slice(0, 3).map((item: any) => 
-        typeof item === 'string' ? item : JSON.stringify(item)
-      );
-    } else if (data.documents && Array.isArray(data.documents)) {
-      // { documents: [...] }
-      answers = data.documents.slice(0, 3).map((item: any) => 
-        item.content || item.text || JSON.stringify(item)
-      );
-    } else {
-      // Fallback: try to extract any meaningful text
-      const fallbackText = data.response || data.answer || data.text || JSON.stringify(data);
-      answers = [fallbackText].slice(0, 3);
-    }
-
-    const normalizedResponse: RagResponse = {
-      ok: true,
-      answers: answers.filter(answer => answer && answer.trim().length > 0)
-    };
-
-    return NextResponse.json(normalizedResponse);
-    
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!r.ok) throw new Error(`POST ${url} -> ${r.status}`);
+    return toStrings(await r.json());
   } catch (error) {
-    console.error('RAG proxy error:', error);
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+async function tryGet(url: string, timeout = 10000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const r = await fetch(url, { 
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!r.ok) throw new Error(`GET ${url} -> ${r.status}`);
+    return toStrings(await r.json());
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+  let lastError: unknown;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
+export async function POST(req: Request) {
+  const startTime = Date.now();
+  
+  try {
+    const { query = '', q = '' } = await req.json().catch(() => ({}));
+    const qStr = String(q || query || '').trim();
+    
+    if (!qStr) {
+      console.warn('[RAG] Query vazia recebida');
+      return NextResponse.json({ ok: false, error: 'query vazia' }, { status: 400 });
+    }
+
+    const base = process.env.RAG_SERVER_URL || process.env.NEXT_PUBLIC_RAG_URL;
+    if (!base) {
+      console.error('[RAG] RAG_SERVER_URL não configurado');
+      return NextResponse.json({ ok: false, error: 'RAG_SERVER_URL não definido' }, { status: 500 });
+    }
+
+    console.log(`[RAG] Processando query: "${qStr}" para servidor: ${base}`);
+
+    const candidates: Array<{ name: string; fn: () => Promise<string[]> }> = [
+      { name: 'POST /search (q)', fn: () => tryPostJSON(`${base}/search`, { q: qStr }) },
+      { name: 'POST /search (query)', fn: () => tryPostJSON(`${base}/search`, { query: qStr }) },
+      { name: 'GET /search?q=', fn: () => tryGet(`${base}/search?q=${encodeURIComponent(qStr)}`) },
+      { name: 'GET /search?query=', fn: () => tryGet(`${base}/search?query=${encodeURIComponent(qStr)}`) },
+      { name: 'POST /v1/search (q)', fn: () => tryPostJSON(`${base}/v1/search`, { q: qStr }) },
+      { name: 'GET /v1/search?q=', fn: () => tryGet(`${base}/v1/search?q=${encodeURIComponent(qStr)}`) },
+    ];
+
+    let lastErr: unknown = null;
+    
+    for (const { name, fn } of candidates) {
+      try {
+        console.log(`[RAG] Tentando: ${name}`);
+        const answers = await retryWithBackoff(fn);
+        
+        if (answers.length) {
+          const duration = Date.now() - startTime;
+          console.log(`[RAG] Sucesso com ${name} em ${duration}ms - ${answers.length} respostas`);
+          return NextResponse.json({ ok: true, answers, method: name, duration });
+        } else {
+          console.log(`[RAG] ${name} retornou array vazio`);
+        }
+      } catch (e) {
+        lastErr = e;
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        console.warn(`[RAG] Falha em ${name}: ${errorMsg}`);
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    console.error(`[RAG] Todos os métodos falharam em ${duration}ms. Último erro:`, lastErr);
+    
     return NextResponse.json(
-      { ok: false, answers: [], error: 'Internal server error' },
+      { 
+        ok: false, 
+        error: `RAG indisponível. Tentamos ${candidates.length} métodos diferentes.`,
+        lastError: lastErr instanceof Error ? lastErr.message : String(lastErr),
+        duration
+      },
+      { status: 502 }
+    );
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('[RAG] Erro inesperado:', error);
+    return NextResponse.json(
+      { 
+        ok: false, 
+        error: 'Erro interno do servidor RAG',
+        duration
+      },
       { status: 500 }
     );
   }

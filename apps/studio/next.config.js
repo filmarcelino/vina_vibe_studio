@@ -1,9 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ["@design-tokens/tailwind"],
-  experimental: {
-    appDir: true,
-  },
+  transpilePackages: [
+    '@vina/diff-patcher',
+    '@vina/overlay-mapper',
+    '@vina/data-adapters',
+    '@vina/design-tokens',
+    '@vina/asset-pipelines'
+  ],
+
 };
 
 module.exports = nextConfig;

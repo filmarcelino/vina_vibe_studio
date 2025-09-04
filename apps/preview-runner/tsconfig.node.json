@@ -1,4 +1,7 @@
 {
+
+
+
   "compilerOptions": {
     "composite": true,
     "skipLibCheck": true,
@@ -8,5 +11,5 @@
     "strict": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts", "server.js", "vite-server.js"]
+  "include": ["server.js", "vite-server.js"]
 }

@@ -30,7 +30,7 @@ const designTokens: Partial<Config> = {
         ring: colors.primary[500],
       },
       fontFamily: typography.fontFamily,
-      fontSize: typography.fontSize,
+      fontSize: typography.fontSize as any,
       fontWeight: typography.fontWeight,
       spacing: spacing,
       borderRadius: borderRadius,
