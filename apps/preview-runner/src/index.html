@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vina.dev Preview Runner</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+          'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      
+      #root {
+        min-height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    
+    <!-- Element Selection Script -->
+    <script>
+      // Function to generate a simple DOM path
+      function generateDomPath(element) {
+        if (!element || element === document.body) {
+          return 'body';
+        }
+        
+        const path = [];
+        let current = element;
+        
+        while (current && current !== document.body) {
+          let selector = current.tagName.toLowerCase();
+          
+          // Add ID if present
+          if (current.id) {
+            selector += '#' + current.id;
+          }
+          
+          // Add classes if present
+          if (current.className && typeof current.className === 'string') {
+            const classes = current.className.trim().split(/\s+/).filter(c => c);
+            if (classes.length > 0) {
+              selector += '.' + classes.join('.');
+            }
+          }
+          
+          // Add nth-child if needed for uniqueness
+          const siblings = Array.from(current.parentNode?.children || []);
+          const sameTagSiblings = siblings.filter(s => s.tagName === current.tagName);
+          if (sameTagSiblings.length > 1) {
+            const index = sameTagSiblings.indexOf(current) + 1;
+            selector += `:nth-child(${index})`;
+          }
+          
+          path.unshift(selector);
+          current = current.parentElement;
+        }
+        
+        return 'body > ' + path.join(' > ');
+      }
+      
+      // Add click listener with capture to intercept all clicks
+      document.addEventListener('click', function(event) {
+        // Don't prevent default behavior, just capture the info
+        const domPath = generateDomPath(event.target);
+        
+        console.log('Element clicked, domPath:', domPath);
+        
+        // Send message to parent window (Studio)
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({
+            type: 'preview:elementClick',
+            domPath: domPath,
+            elementInfo: {
+              tagName: event.target.tagName,
+              className: event.target.className,
+              id: event.target.id,
+              textContent: event.target.textContent?.substring(0, 100) // Limit text length
+            }
+          }, '*');
+        }
+      }, true); // Use capture phase
+    </script>
+    
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>

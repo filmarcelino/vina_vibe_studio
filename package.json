@@ -1,0 +1,29 @@
+{
+  "name": "vina.dev",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@8.15.0",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev --parallel",
+    "dev:studio": "turbo dev --filter=studio",
+    "dev:runner": "turbo dev --filter=preview-runner",
+    "dev:packages": "turbo dev --filter=./packages/*",
+    "build:packages": "turbo build --filter=./packages/*",
+    "lint": "turbo lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "type-check": "turbo type-check",
+    "clean": "turbo clean",
+    "test": "turbo test"
+  },
+  "devDependencies": {
+    "@turbo/gen": "^1.12.4",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "turbo": "^1.12.4",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
